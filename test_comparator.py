@@ -1,5 +1,5 @@
 import unittest
-from comparator import Swg, Comparator
+from comparator import Swg, Comparator, FieldCmpResult
 
 OLD_EP_SWG = '''
 {
@@ -243,6 +243,18 @@ class TestEndpoints(unittest.TestCase):
         ep = cmp.same_endpoints()[0]
         self.assertEqual(s1.endpoint_request_body_id(ep), "Pet", "Request def")
         self.assertEqual(s2.endpoint_request_body_id(ep), "Pet", "Request def")
+    def test_compare_def(self):
+        s1 = Swg(OLD_BODY_SWG)
+        s2 = Swg(NEW_BODY_SWG)
+        cmp = Comparator(s1, s2)
+        ep = cmp.same_endpoints()[0]
+        self.assertEqual(cmp.compare_requests(ep), 
+          [
+            FieldCmpResult("properties>msg", "+"),
+            FieldCmpResult("properties>message", "-"),
+            FieldCmpResult("properties>code>type", "/")
+          ]
+        )
 
 if __name__ == '__main__':
     unittest.main()

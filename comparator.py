@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Optional,List
 
 Endpoint = namedtuple('Endpoint', ['path', 'method'])
+FieldCmpResult = namedtuple('Field', ['name', 'effect']) # effect = + | - | / (add, remove, change)
 
 @dataclass
 class ChangedParameter:
@@ -63,6 +64,9 @@ class Swg:
         return ""
 
 def extract_ref(obj):
+    ref = obj.get("$ref")
+    if ref != None:
+        return ref.replace("#/definitions/", "")
     sch = obj.get("schema")                    
     if sch == None:
         return ""
@@ -78,18 +82,6 @@ def extract_ref(obj):
     if ref == None:
         return ""
     return ref.replace("#/definitions/", "")
-
-def compare_dict(d1, d2):
-    comm_keys = list(set(d1.keys()) & set(d2.keys()))
-    if len(comm_keys) != len(d1) or len(comm_keys) != len(d2):
-        return False
-    for k in comm_keys:
-        f1 = d1.get(k)
-        f2 = d2.get(k)
-        if f1.get("type") != f2.get("type"):
-            return False
-    return True
-
 
 class Comparator:
     def __init__(self, old, new):
@@ -170,16 +162,40 @@ class Comparator:
         return self.compare_defs(id1, id2)
     def compare_defs(self, id1, id2):
         if (id1 == "" and id2 != "") or (id1 != "" and id2 == ""):
-            return False
+            return [FieldCmpResult("Definition", "/")]
         if id1 == "" and id2 == "":
-            return True
+            return []
         def1 = self.old.definition(id1)
-        def2 = self.old.definition(id2)
+        def2 = self.new.definition(id2)
         if def1 == None and def2 == None:
-            return True
+            return []
         if def1 == None or def2 == None:
-            return False
-        return compare_dict(def1, def2)
+            return [FieldCmpResult("Definition", "/")]
+        return self.compare_dict(def1, def2)
+    def compare_dict(self, d1, d2):
+        result = []
+        comm_keys = list(set(d1.keys()) & set(d2.keys()))
+        add_keys = list(set(d2.keys()) - set(comm_keys))
+        del_keys = list(set(d1.keys()) - set(comm_keys))
+        for k in add_keys:
+            result.append(FieldCmpResult(k, "+"))
+        for k in del_keys:
+            result.append(FieldCmpResult(k, "-"))
+        for k in comm_keys:
+            f1 = d1.get(k)
+            f2 = d2.get(k)
+            if f1 != f2 and not (isinstance(f1, dict) and isinstance(f2, dict)):
+                result.append(FieldCmpResult(k, "/"))
+            if isinstance(f1, dict) and isinstance(f2, dict):
+                # 1. compare content
+                res = self.compare_dict(f1, f2)
+                for e in res:
+                    result.append(FieldCmpResult(k+">"+e.name, e.effect))
+                # 2. compare references 
+                res = self.compare_defs(extract_ref(f1), extract_ref(f2))
+                for e in res:
+                    result.append(FieldCmpResult(k+">"+e.name, e.effect))
+        return result
 
 def report_changes(outfile, oldcnt, newcnt):
     report = open(outfile, "w")
@@ -201,7 +217,7 @@ def report_changes(outfile, oldcnt, newcnt):
         same_req_body = cmp.compare_requests(e)
         same_resp_body = cmp.compare_responses(e)
         if len(added) == 0 and len(removed) == 0 and len(changes) == 0 and \
-            same_req_body and same_resp_body:
+            len(same_req_body) == 0 and len(same_resp_body) == 0:
             continue
         report.write("{} {}\n".format(e.method, e.path))
         if not(len(added) == 0 and len(removed) == 0 and len(changes) == 0):
@@ -211,8 +227,12 @@ def report_changes(outfile, oldcnt, newcnt):
                 report.write("  --{}\n".format(p))
             for p in changes:
                 report.write("  <>{}\n".format(p.name))
-        if not same_req_body:
-            report.write("  <>request body\n")
-        if not same_resp_body:
-            report.write("  <>response body\n")
+        if len(same_req_body) > 0:
+            report.write("  request body:\n")
+            for f in same_req_body:
+                report.write("  {}{}\n".format(f.effect, f.name))
+        if len(same_resp_body) > 0:
+            report.write("  response body:\n")
+            for f in same_resp_body:
+                report.write("  {}{}\n".format(f.effect, f.name))
     report.close()
