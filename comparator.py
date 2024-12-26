@@ -200,14 +200,15 @@ class Comparator:
 def report_changes(outfile, oldcnt, newcnt):
     report = open(outfile, "w")
     cmp = Comparator(Swg(oldcnt), Swg(newcnt))
+    report.write("Hint: +: added, -: removed, /: changed\n\n")
     report.write("Added endpoints\n")
     for e in cmp.added_endpoints():
-        report.write("{} {}\n".format(e.method, e.path))
-    report.write("\n\n")
+        report.write("{} {}\n".format(e.method.upper(), e.path))
+    report.write("\n")
     report.write("Removed endpoints\n")
     for e in cmp.removed_endpoints():
-        report.write("{} {}\n".format(e.method, e.path))
-    report.write("\n\n")
+        report.write("{} {}\n".format(e.method.upper(), e.path))
+    report.write("\n")
     eps = cmp.same_endpoints()
     report.write("Endpoints changes\n")
     for e in eps:
@@ -219,7 +220,7 @@ def report_changes(outfile, oldcnt, newcnt):
         if len(added) == 0 and len(removed) == 0 and len(changes) == 0 and \
             len(same_req_body) == 0 and len(same_resp_body) == 0:
             continue
-        report.write("{} {}\n".format(e.method, e.path))
+        report.write("{} {}\n".format(e.method.upper(), e.path))
         if not(len(added) == 0 and len(removed) == 0 and len(changes) == 0):
             for p in added:
                 report.write("  ++{}\n".format(p))
